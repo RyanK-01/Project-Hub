@@ -11,7 +11,7 @@ class TextProcessor:
     def __init__(self):
         
         #Load the local .env file
-        load_dotenv("local.env")
+        load_dotenv()
         self.api_key = os.getenv('GEMINI_API_KEY')
 
         #Create new client
