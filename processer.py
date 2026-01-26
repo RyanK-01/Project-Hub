@@ -1,16 +1,25 @@
 import os
 import json
 import PyPDF2
-import google.generativeai as genai
-#from dotenv import load_dotenv
+from file_loader import loader
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 class TextProcessor:
     def __init__(self):
         
+        #Load the local .env file
+        load_dotenv("local.env")
+        self.api_key = os.getenv('GEMINI_API_KEY')
+
+        #Create new client
+        self.client = genai.Client(api_key=self.api_key)
+
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size = 2000,
-            chunk_overlap = 20,
+            chunk_size = 50000,
+            chunk_overlap = 1000,
             length_function = len
         )
 
@@ -26,20 +35,21 @@ class TextProcessor:
         print(full_text)
         return full_text
 
+
     '''Break down large chunck of text to smaller ones'''
     def get_chunk(self, full_text):
         chunk = self.text_splitter.split_text(full_text)
         return chunk
     
     '''Generate Script'''
-    def generate_script(chunks):
+    def generate_script(self, chunks):
         full_script = []
         previous_text = '' #Baton
 
-        for i in range(chunks):
+        for chunk in chunks:
 
             #Prompt
-            prompt = f'''
+            system_prompt = f'''
             ### ROLE
             You are a professional podcast producer. Your job is to convert study notes into a
             strictly structured JSON dialouge script. Assume that the listener has NO prior knowledge 
@@ -48,12 +58,6 @@ class TextProcessor:
             ### CHARACTERS INVOLVED
             1. **Alex (Host): **A curious, energetic, asks clarifying questions kind of student.
             2. **John (Expert): **A calm, knowledgeable, uses everyday language and simple analogies to explain complex topics.
-
-            ### INPUT DATA
-            Here is the raw text to discuss: '{chunks}'
-
-            ### CONTEXT (PREVIOUS CONVERSATION)
-            The podcast is already in progess. Here is the last thing that was said: '{previous_text}'
 
             ### INSTRUCTIONS
             1. Continue the conversation naturally from the CONTEXT. (no 'Welcome back')
@@ -69,21 +73,39 @@ class TextProcessor:
                 {{'speaker': 'John', 'text': 'Think of it like a battery...'}}           
             ]
             '''
+
+            user_prompt = f'''
+            ### INPUT DATA
+            Here is the raw text to discuss: '{chunk}'
+
+            ### CONTEXT (PREVIOUS CONVERSATION)
+            The podcast is already in progess. Here is the last thing that was said: '{previous_text}'
+            '''
+
+            # In your generation loop:
+            response = self.client.models.generate_content(
+                model='gemini-2.0-flash',
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt # Pass rules here
+                ),
+                contents=user_prompt # Pass data here
+            )
+                        
+            # Clean and parse JSON
+            clean_text = response.text.replace("```json", "").replace("```", "").strip()
+            try:
+                current_segment = json.loads(clean_text)
+                full_script.extend(current_segment)
+                previous_text = str(current_segment[-3:])
+            except json.JSONDecodeError:
+                print(f"Error parsing JSON for chunk: {chunk[:50]}...")
         
-            #Generate prompt with Gemini
-            response = genai.generate(prompt)
-            current_segment = json.loads(response)
-
-            #Append it to the Script
-            full_script.extend(current_segment)
-
-            #Updating of Baton
-            #Grab the last few items from current_segment to show the next iteration
-            previous_text = str(current_segment[-3:])
-
+        return full_script
 
 if __name__ == '__main__':
     processor = TextProcessor()
-    full_text = processor.extract_text_from_pdf('file-sample_150kB.pdf')
+    full_text = processor.extract_text_from_pdf('Adobe_sample.pdf')
     chunks = processor.get_chunk(full_text)
-    print(len(chunks), chunks[0])
+    
+    test_script = processor.generate_script(chunks[:1])
+    print(json.dumps(test_script, indent=2))
