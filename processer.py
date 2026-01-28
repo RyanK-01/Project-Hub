@@ -1,7 +1,7 @@
 import os
 import json
 import PyPDF2
-from file_loader import loader
+from file_loader import detect_file_type
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
@@ -23,17 +23,17 @@ class TextProcessor:
             length_function = len
         )
 
-    def extract_text_from_pdf(self, pdf_path):
-        with open(pdf_path, 'rb') as pdf_file:
-            reader = PyPDF2.PdfReader(pdf_file)
-            last_seen_title =''
-            full_text = ''
-            for index, page in enumerate(reader.pages, start=1):
-                text = page.extract_text()
-                full_text += 'Page' + str(index) + '\n' + text +'\n\n'
+    # def extract_text_from_pdf(self, pdf_path):
+    #     with open(pdf_path, 'rb') as pdf_file:
+    #         reader = PyPDF2.PdfReader(pdf_file)
+    #         last_seen_title =''
+    #         full_text = ''
+    #         for index, page in enumerate(reader.pages, start=1):
+    #             text = page.extract_text()
+    #             full_text += 'Page' + str(index) + '\n' + text +'\n\n'
 
-        print(full_text)
-        return full_text
+    #     print(full_text)
+    #     return full_text
 
 
     '''Break down large chunck of text to smaller ones'''
@@ -104,7 +104,13 @@ class TextProcessor:
 
 if __name__ == '__main__':
     processor = TextProcessor()
-    full_text = processor.extract_text_from_pdf('Adobe_sample.pdf')
+    file_data = detect_file_type('Adobe_sample.pdf')
+    
+    if isinstance(file_data, list):
+        full_text = '\n'.join([item['text'] for item in file_data])
+    else:
+        full_text = file_data
+    
     chunks = processor.get_chunk(full_text)
     
     test_script = processor.generate_script(chunks[:1])
